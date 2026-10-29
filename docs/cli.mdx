@@ -126,16 +126,78 @@ ollama rm gemma4
 ollama ls
 ```
 
-### Sign in to Ollama
+### Export a model as GGUF
+
+Export a model to a `.gguf` file:
 
 ```
-ollama signin
+ollama export gemma4
+ollama export gemma4 ./my-model.gguf
 ```
 
-### Sign out of Ollama
+### Import a GGUF file
+
+Import a `.gguf` file into Ollama under a model name:
 
 ```
-ollama signout
+ollama import my-custom-model ./my-model.gguf
+```
+
+### Rename a model
+
+Rename an existing model using its name or model ID:
+
+```
+ollama rename old-name new-name
+ollama rename d6896264e107 new-name
+ollama mv old-name new-name
+```
+
+### Deep model inspection (Dev tools)
+
+Inspect model parameters, layers, tensors, quantization breakdown, and GGUF metadata:
+
+```
+ollama dev info <model>
+ollama dev info <model-id>
+```
+
+Filter by specific sections or output in JSON:
+
+```
+# Show layer-by-layer architectural breakdown & quantization distribution
+ollama dev info gemma4 --layers
+
+# Show detailed tensor table
+ollama dev info gemma4 --tensors
+
+# Show all GGUF key-value metadata parameters
+ollama dev info gemma4 --metadata
+
+# Show on-disk blob storage and manifest details
+ollama dev info gemma4 --storage
+
+# Output all model inspection details as JSON
+ollama dev info gemma4 --json
+```
+
+### Neural Network Web Visualizer & Passive Listener
+
+Launch a local real-time Web UI visualizer that passively listens for active API inference requests without sending any prompts itself:
+
+```
+ollama dev ui
+```
+
+Options:
+* `--port`, `-p`: Port for the visualizer dashboard and proxy listener (default: `11435`).
+* `--target`: Target Ollama server address (default: `http://127.0.0.1:11434`).
+* `--no-browser`: Do not automatically open the browser on launch.
+
+To monitor standard requests in real time, simply route your CLI command or client through the listener:
+
+```
+OLLAMA_HOST=127.0.0.1:11435 ollama run deepseek-r1-distill-qwen-8b-abliterated.q4_k_m
 ```
 
 ### Create a customized model

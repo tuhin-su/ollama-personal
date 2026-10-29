@@ -748,6 +748,13 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			thinkingClose = thinkingCloseForCompletion(builtinParser, thinkTagParser)
 		}
 
+		if GlobalTelemetry.Active() {
+			GlobalTelemetry.Broadcast("inference_start", map[string]any{
+				"model":  req.Model,
+				"prompt": prompt,
+			})
+		}
+
 		if err := r.Completion(ctx, llm.CompletionRequest{
 			Prompt:          prompt,
 			Media:           media,
@@ -792,6 +799,17 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 				thinking, content := thinkTagParser.AddContent(cr.Content)
 				res.Thinking = thinking
 				res.Response = content
+			}
+
+			if GlobalTelemetry.Active() {
+				GlobalTelemetry.Broadcast("token", map[string]any{
+					"model":      req.Model,
+					"token":      res.Response,
+					"thinking":   res.Thinking,
+					"done":       cr.Done,
+					"eval_count": cr.EvalCount,
+					"prompt":     prompt,
+				})
 			}
 
 			if _, err := sb.WriteString(cr.Content); err != nil {
@@ -2424,6 +2442,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 
 	// Inference
 	r.GET("/api/ps", s.PsHandler)
+	r.GET("/api/dev/telemetry", s.DevTelemetryHandler)
 	r.POST("/api/generate", s.withInferenceRequestLogging("/api/generate", s.GenerateHandler)...)
 	r.POST("/api/chat", s.withInferenceRequestLogging("/api/chat", s.ChatHandler)...)
 	r.POST("/api/embed", s.EmbedHandler)
@@ -3339,6 +3358,13 @@ func (s *Server) ChatHandler(c *gin.Context) {
 
 		var parserErr error
 
+		if GlobalTelemetry.Active() {
+			GlobalTelemetry.Broadcast("inference_start", map[string]any{
+				"model":  req.Model,
+				"prompt": prompt,
+			})
+		}
+
 		err := r.Completion(ctx, llm.CompletionRequest{
 			Prompt:          prompt,
 			Media:           media,
@@ -3440,6 +3466,16 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			}
 
 			ch <- res
+			if GlobalTelemetry.Active() {
+				GlobalTelemetry.Broadcast("token", map[string]any{
+					"model":      req.Model,
+					"token":      res.Message.Content,
+					"thinking":   res.Message.Thinking,
+					"done":       r.Done,
+					"eval_count": r.EvalCount,
+					"prompt":     prompt,
+				})
+			}
 		})
 		if parserErr != nil {
 			ch <- gin.H{"error": parserErr.Error()}
@@ -3515,6 +3551,18 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 	go func() {
 		defer close(ch)
 
+		promptText := ""
+		if len(nativeReq.Messages) > 0 {
+			promptText = nativeReq.Messages[len(nativeReq.Messages)-1].Content
+		}
+
+		if GlobalTelemetry.Active() {
+			GlobalTelemetry.Broadcast("inference_start", map[string]any{
+				"model":  req.Model,
+				"prompt": promptText,
+			})
+		}
+
 		err := r.Chat(c.Request.Context(), nativeReq, func(r llm.ChatResponse) {
 			res := api.ChatResponse{
 				Model:     req.Model,
@@ -3542,6 +3590,16 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 			}
 
 			ch <- res
+			if GlobalTelemetry.Active() {
+				GlobalTelemetry.Broadcast("token", map[string]any{
+					"model":      req.Model,
+					"token":      res.Message.Content,
+					"thinking":   res.Message.Thinking,
+					"done":       r.Done,
+					"eval_count": r.EvalCount,
+					"prompt":     promptText,
+				})
+			}
 		})
 		if err != nil {
 			s.sched.expireRunnersForRuntimeOOM(m, err)

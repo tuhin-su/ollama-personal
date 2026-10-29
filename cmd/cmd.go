@@ -32,7 +32,6 @@ import (
 	"github.com/containerd/console"
 	"github.com/mattn/go-runewidth"
 	"github.com/olekukonko/tablewriter"
-	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
@@ -1059,60 +1058,6 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 		}
 		return err
 	}
-	return nil
-}
-
-func SigninHandler(cmd *cobra.Command, args []string) error {
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return err
-	}
-
-	user, err := client.Whoami(cmd.Context())
-	if err != nil {
-		var aErr api.AuthorizationError
-		if errors.As(err, &aErr) && aErr.StatusCode == http.StatusUnauthorized {
-			fmt.Println("You need to be signed in to Ollama to run Cloud models.")
-			fmt.Println()
-
-			if aErr.SigninURL != "" {
-				_ = browser.OpenURL(aErr.SigninURL)
-				fmt.Printf(ConnectInstructions, aErr.SigninURL)
-			}
-			return nil
-		}
-		return err
-	}
-
-	if user != nil && user.Name != "" {
-		fmt.Printf("You are already signed in as user '%s'\n", user.Name)
-		fmt.Println()
-		return nil
-	}
-
-	return nil
-}
-
-func SignoutHandler(cmd *cobra.Command, args []string) error {
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return err
-	}
-
-	err = client.Signout(cmd.Context())
-	if err != nil {
-		var aErr api.AuthorizationError
-		if errors.As(err, &aErr) && aErr.StatusCode == http.StatusUnauthorized {
-			fmt.Println("You are not signed in to ollama.com")
-			fmt.Println()
-			return nil
-		} else {
-			return err
-		}
-	}
-
-	fmt.Println("You have signed out of ollama.com")
-	fmt.Println()
 	return nil
 }
 
@@ -2678,40 +2623,6 @@ func NewCLI() *cobra.Command {
 
 	pushCmd.Flags().Bool("insecure", false, "Use an insecure registry")
 
-	signinCmd := &cobra.Command{
-		Use:     "signin",
-		Short:   "Sign in to ollama.com",
-		Args:    cobra.ExactArgs(0),
-		PreRunE: checkServerHeartbeat,
-		RunE:    SigninHandler,
-	}
-
-	loginCmd := &cobra.Command{
-		Use:     "login",
-		Short:   "Sign in to ollama.com",
-		Hidden:  true,
-		Args:    cobra.ExactArgs(0),
-		PreRunE: checkServerHeartbeat,
-		RunE:    SigninHandler,
-	}
-
-	signoutCmd := &cobra.Command{
-		Use:     "signout",
-		Short:   "Sign out from ollama.com",
-		Args:    cobra.ExactArgs(0),
-		PreRunE: checkServerHeartbeat,
-		RunE:    SignoutHandler,
-	}
-
-	logoutCmd := &cobra.Command{
-		Use:     "logout",
-		Short:   "Sign out from ollama.com",
-		Hidden:  true,
-		Args:    cobra.ExactArgs(0),
-		PreRunE: checkServerHeartbeat,
-		RunE:    SignoutHandler,
-	}
-
 	listCmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -2734,6 +2645,22 @@ func NewCLI() *cobra.Command {
 		RunE:    CopyHandler,
 	}
 
+	exportCmd := &cobra.Command{
+		Use:   "export MODEL [PATH]",
+		Short: "Export a model to a GGUF file",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE:  ExportHandler,
+	}
+	exportCmd.Flags().StringP("output", "o", "", "Output GGUF file path (default: <model>.gguf)")
+
+	importCmd := &cobra.Command{
+		Use:     "import MODEL PATH",
+		Short:   "Import a GGUF file as a model",
+		Args:    cobra.RangeArgs(1, 2),
+		PreRunE: checkServerHeartbeat,
+		RunE:    ImportHandler,
+	}
+
 	deleteCmd := &cobra.Command{
 		Use:     "rm MODEL [MODEL...]",
 		Short:   "Remove a model",
@@ -2741,6 +2668,17 @@ func NewCLI() *cobra.Command {
 		PreRunE: checkServerHeartbeat,
 		RunE:    DeleteHandler,
 	}
+
+	renameCmd := &cobra.Command{
+		Use:     "rename SOURCE NEW_NAME",
+		Aliases: []string{"mv"},
+		Short:   "Rename a model (by name or ID)",
+		Args:    cobra.ExactArgs(2),
+		PreRunE: checkServerHeartbeat,
+		RunE:    RenameHandler,
+	}
+
+	devCmd := NewDevCommand()
 
 	runnerCmd := &cobra.Command{
 		Use:    "runner",
@@ -2821,14 +2759,14 @@ func NewCLI() *cobra.Command {
 		stopCmd,
 		pullCmd,
 		pushCmd,
-		signinCmd,
-		loginCmd,
-		signoutCmd,
-		logoutCmd,
 		listCmd,
 		psCmd,
 		copyCmd,
 		deleteCmd,
+		exportCmd,
+		importCmd,
+		renameCmd,
+		devCmd,
 		runnerCmd,
 		gpuDiscoverCmd,
 		launch.LaunchCmd(checkServerHeartbeat, runInteractiveTUI),
